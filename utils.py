@@ -4,6 +4,7 @@ import s3storage
 import tokyocabinetindex
 import uuid
 import mailbox
+import urllib
 import time
 from datetime import datetime
 import imaplib
@@ -50,8 +51,8 @@ def sync_index(index, storage, full=False):
 
 
 if __name__=="__main__":
-    s = s3storage.S3Storage('matthew.via-mailtrust.com', 'api1.cluster.matthewvia.info', 'M9S2K57Q3ECS3F3HEAN8', 'csbQniDf3klLf8AsfaZMoMNG3hQ8l69Ge3gLURlh')
-    i = tokyocabinetindex.TokyoCabinetIndex('matthew.via@mailtrust.com')
+    s = s3storage.S3Storage('1234', 'api1.cluster.matthewvia.info', 'M9S2K57Q3ECS3F3HEAN8', 'csbQniDf3klLf8AsfaZMoMNG3hQ8l69Ge3gLURlh')
+    i = tokyocabinetindex.TokyoCabinetIndex('1234')
     sync_index(i, s, False)
     sys.exit(0)
     mailboxname = sys.argv[1]

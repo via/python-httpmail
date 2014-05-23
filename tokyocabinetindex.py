@@ -1,5 +1,5 @@
 from tokyocabinet import table, btree
-from dateutil.parser import parse
+from email import utils
 import json
 import filter
 import time
@@ -55,7 +55,7 @@ class TokyoCabinetIndex():
             elif filter in ['stored', 'size']:
                 q.addcond(filter, self._verb_to_tcfilter(verb), str(value))
             elif filter in ['date']:
-               d = time.mktime(parse(value).timetuple())
+               d = time.mktime(utils.parsedate(value))
                q.addcond('date_int', self._verb_to_tcfilter(verb), str(d))
             elif filter in ['tags']:
                 q.addcond(filter, table.TDBQCSTRINC, 
@@ -88,7 +88,7 @@ class TokyoCabinetIndex():
         q = self.tags.query()
         q.addcond('name', table.TDBQCSTREQ, tag)
         tags = q.search()
-        return tags[0]
+        return self.tags[tags[0]]
 
     def put_tag(self, tag):
         u = str(uuid.uuid4())
@@ -98,7 +98,7 @@ class TokyoCabinetIndex():
         pass
 
     def get_message(self, uuid):
-        msg = self.table[uuid]
+        msg = self.table[str(uuid)]
         taguids = msg['tags'].split(' ')
         msg['tags'] = [self.tags[t]['name'] for t in taguids]
         msg['flags'] = msg['flags'].split(' ')
@@ -106,6 +106,22 @@ class TokyoCabinetIndex():
         msg['stored'] = int(msg['stored'])
         del msg['date_int']
         return msg
+
+    def put_message_tags(self, uuid, newtags):
+        msg = self.table[str(uuid)]
+        taguids = []
+        for tag in newtags:
+            q = self.tags.query()
+            q.addcond('name', table.TDBQCSTREQ, tag)
+            res = q.search()
+            taguids += res
+        msg['tags'] = ' '.join([str(x) for x in taguids])
+        self.table[uuid] = msg
+
+    def put_message_flags(self, uuid, flags):
+        msg = self.table[str(uuid)]
+        msg['flags'] = str(' '.join(flags))
+        self.table[uuid] = msg
     
     def put_message(self, uuid, msg):
         newmsg = msg
@@ -116,7 +132,7 @@ class TokyoCabinetIndex():
             taguids += q.search()
         newmsg['tags'] = ' '.join([str(x) for x in taguids])
         newmsg['flags'] = str(' '.join(newmsg['flags']))
-        newmsg['date_int'] = str(int(time.mktime(parse(msg['date'], fuzzy=True).timetuple())))
+        newmsg['date_int'] = str(int(utils.mktime_tz(utils.parsedate_tz(msg['date']))))
         msg['size'] = str(int(msg['size']))
         msg['stored'] = str(int(msg['stored']))
         self.table[uuid] = newmsg
