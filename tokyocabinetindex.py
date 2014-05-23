@@ -46,7 +46,7 @@ class TokyoCabinetIndex():
         if verb is filter.FilterVerb.Contains: 
             return table.TDBQCNUMEQ
 
-    def list_messages(self, filterlist=[], sortlist=[], limit=None):
+    def list_messages(self, filterlist=[], sort=None, limit=None):
         q = self.table.query()
         for filter, verb, value in filterlist:
             if filter in ['flags', 'to', 'from', 'cc',
@@ -61,15 +61,14 @@ class TokyoCabinetIndex():
                 q.addcond(filter, table.TDBQCSTRINC, 
                     "\"{0}\"".format(value))
 
-        if len(sortlist) > 1:
-            raise ValueError("More than one sort not supported")
-        for sort, ascending in sortlist:
-            if sort in ['cc', 'from', 'subject', 'to']:
-                q.setorder(sort, table.TDBQOSTRASC if ascending else table.TDBQOSTRDESC)
-            elif sort in ['date']:
+        if sort is not None:
+            sortfield, ascending = sort
+            if sortfield in ['cc', 'from', 'subject', 'to']:
+                q.setorder(sortfield, table.TDBQOSTRASC if ascending else table.TDBQOSTRDESC)
+            elif sortfield in ['date']:
                 q.setorder('date_int', table.TDBQONUMASC if ascending else table.TDBQONUMDESC)
-            elif sort in ['size', 'stored']:
-                q.setorder(sort, table.TDBQONUMASC if ascending else table.TDBQONUMDESC)
+            elif sortfield in ['size', 'stored']:
+                q.setorder(sortfield, table.TDBQONUMASC if ascending else table.TDBQONUMDESC)
 
         if limit:
             q.setlimit(*limit)

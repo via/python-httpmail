@@ -2,6 +2,7 @@ import s3storage
 import tokyocabinetindex
 import json
 import uuid
+import filter
 import time
 import datetime
 from email.parser import FeedParser
@@ -151,10 +152,41 @@ def del_message(mailbox, message):
     s.del_message(message)
     i.del_message(message)
 
+def _encode_list_filter(f):
+    field = f['field']
+    if f['qualifier'] == '=':
+        qual = filter.FilterVerb.Contains    
+    elif f['qualifier'] == '>':
+        qual = filter.FilterVerb.Greater    
+    elif f['qualifier'] == '<':
+        qual = filter.FilterVerb.Less    
+    return (field, qual, f['value'])
+
 @app.route('/mailboxes/<mailbox>/messages/')
 def list_messages(mailbox):
     i = tokyocabinetindex.TokyoCabinetIndex(mailbox)
-    return json.dumps(i.list_messages())
+    try:
+        body = json.loads(request.data)
+    except:
+        body = {'filters': []}
+    list_filters = []
+    sort = None
+    limit = (int(request.args.get('limit')), int(request.args.get('skip')))
+    print limit
+    if limit[0] is None:
+        limit = None
+     
+    for filter in body['filters']:
+        if filter['field'] in ['to', 'date', 'from', 'tag', 'flag', 'bcc', 'subject', 'cc', 'size', 'sent', 'stored']:
+            list_filters.append(_encode_list_filter(filter))
+        elif filter['field'] in ['header']:
+            pass
+        elif filter['field'] in ['body', 'text']:
+            pass
+    if 'sort' in body:
+        sort = (body['sort']['field'], False if body['sort']['reverse'] else True)
+  
+    return json.dumps(i.list_messages(filterlist=list_filters, sort=sort, limit=limit))
     
 
 if __name__ == "__main__":
