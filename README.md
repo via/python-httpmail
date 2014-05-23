@@ -156,26 +156,3 @@ Unsets the given flag for the message.
 Gets all the meta information associated with the message. Currently, this will
 return a JSON dictionary with two keys, `From` and `Subject`.
 
-# Algorithmic Complexities
-
-## Loading the page
-
-    125   SISMEMBER     O(1)
-    50    HGET          O(1)
-    1     ZCARD         O(1)
-    1     SMEMBERS      O(N)                 N -> Number of folders
-    1     ZREVRANGE     O(log(N)+M)          N -> Number of messages in the folder
-                                             M -> Page size
-    1     *DEL          O(N)                 N -> Number of read messages in the folder
-    1     *ZINTERSTORE  O(2*N)+O(M*log(M))   N -> Number of messages in the folder
-                                             M -> Number of read messages in the folder
-
-## Loading a message
-
-    5     SISMEMBER     O(1)
-    1     SADD          O(1)
-    1     ZCARD         O(1)
-    1     SwiftRead     O(1)
-    1     *DEL          O(N)                 N -> Number of read messages in the folder
-    1     *ZINTERSTORE  O(2*N)+O(M*log(M))   N -> Number of messages in the folder
-                                             M -> Number of read messages in the folder
