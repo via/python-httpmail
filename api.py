@@ -95,6 +95,35 @@ def put_message_tags(mailbox, message, tag):
     s.put_attrs(message, attrs)
     return ""
 
+@app.route('/mailboxes/<mailbox>/messages/<message>/flags/')
+def get_flags(mailbox, message):
+    i = tokyocabinetindex.TokyoCabinetIndex(mailbox)
+    return json.dumps(i.get_message(str(message))['flags'])
+
+@app.route('/mailboxes/<mailbox>/messages/<message>/flags/<flag>')
+def get_flag_enabled(mailbox, message, flag):
+    i = tokyocabinetindex.TokyoCabinetIndex(mailbox)
+    if str(flag) in i.get_message(str(message))['flags']:
+        return ("", 200)
+    else:
+        return ("Not Found", 404)
+
+@app.route('/mailboxes/<mailbox>/messages/<message>/flags/<flag>', methods=['PUT', 'DELETE'])
+def put_flag(mailbox, message, flag):
+    i = tokyocabinetindex.TokyoCabinetIndex(mailbox)
+    s = s3storage.S3Storage(mailbox, s3host, s3access, s3secret)
+    newflags = set([str(flag)])
+    flags = set(i.get_message(str(message))['flags'])
+    if request.method == 'PUT':
+        flags = flags.union(newflags)
+    elif request.method == 'DELETE':
+        flags = flags.difference(newflags)
+    i.put_message_flags(message, list(flags))
+    attrs = s.get_attrs(str(message))
+    attrs['flags'] = list(flags)
+    s.put_attrs(message, attrs)
+    return ""
+
 @app.route('/mailboxes/<mailbox>/messages/<message>')
 def get_message(mailbox, message):
     s = s3storage.S3Storage(mailbox, s3host, s3access, s3secret)
