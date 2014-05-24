@@ -5,6 +5,12 @@ import filter
 import time
 import uuid
 
+class TagNotFound(Exception):
+    pass
+
+class MessageNotFound(Exception):
+    pass
+
 class TokyoCabinetIndex():
  
     """
@@ -46,6 +52,15 @@ class TokyoCabinetIndex():
         if verb is filter.FilterVerb.Contains: 
             return table.TDBQCNUMEQ
 
+    def _tag_to_uuid(self, tag):
+        q = self.tags.query()
+        q.addcond('name', table.TDBQCSTREQ, tag)
+        tags = q.search()
+        if len(tags) == 0:
+            return None
+        else:
+            return tags[0]
+
     def list_messages(self, filterlist=[], sort=None, limit=None):
         q = self.table.query()
         for filter, verb, value in filterlist:
@@ -57,9 +72,12 @@ class TokyoCabinetIndex():
             elif filter in ['date']:
                d = time.mktime(utils.parsedate(value))
                q.addcond('date_int', self._verb_to_tcfilter(verb), str(d))
-            elif filter in ['tags']:
-                q.addcond(filter, table.TDBQCSTRINC, 
-                    "\"{0}\"".format(value))
+            elif filter in ['tag']:
+                t = self._tag_to_uuid(value)
+                if not t:
+                    raise TagNotFound()
+                q.addcond('tags', table.TDBQCSTRINC, t)
+                    
 
         if sort is not None:
             sortfield, ascending = sort
@@ -84,10 +102,7 @@ class TokyoCabinetIndex():
         return tags or []
 
     def get_tag(self, tag):
-        q = self.tags.query()
-        q.addcond('name', table.TDBQCSTREQ, tag)
-        tags = q.search()
-        return self.tags[tags[0]]
+        return self.tags[self._tag_to_uuid(tag)]
 
     def put_tag(self, tag):
         u = str(uuid.uuid4())
@@ -110,10 +125,10 @@ class TokyoCabinetIndex():
         msg = self.table[str(uuid)]
         taguids = []
         for tag in newtags:
-            q = self.tags.query()
-            q.addcond('name', table.TDBQCSTREQ, tag)
-            res = q.search()
-            taguids += res
+            newtag = self._tag_to_uuid(tag)
+            if not newtag:
+                raise TagNotFound() 
+            taguids += [newtag]
         msg['tags'] = ' '.join([str(x) for x in taguids])
         self.table[uuid] = msg
 
@@ -126,9 +141,10 @@ class TokyoCabinetIndex():
         newmsg = msg
         taguids = []
         for tag in newmsg['tags']:
-            q = self.tags.query()
-            q.addcond('name', table.TDBQCSTREQ, tag)
-            taguids += q.search()
+            newtag = self._tag_to_uuid(tag)
+            if not newtag:
+                raise TagNotFound() 
+            taguids += [newtag]
         newmsg['tags'] = ' '.join([str(x) for x in taguids])
         newmsg['flags'] = str(' '.join(newmsg['flags']))
         newmsg['date_int'] = str(int(utils.mktime_tz(utils.parsedate_tz(msg['date']))))

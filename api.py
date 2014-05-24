@@ -171,10 +171,11 @@ def list_messages(mailbox):
         body = {'filters': []}
     list_filters = []
     sort = None
-    limit = (int(request.args.get('limit')), int(request.args.get('skip')))
-    print limit
-    if limit[0] is None:
+    limit = (request.args.get('limit'), request.args.get('skip'))
+    if limit[0] is None or limit[1] is None:
         limit = None
+    else:
+        limit = (int(limit[0]), int(limit[1]))
      
     for filter in body['filters']:
         if filter['field'] in ['to', 'date', 'from', 'tag', 'flag', 'bcc', 'subject', 'cc', 'size', 'sent', 'stored']:
