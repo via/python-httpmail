@@ -1,6 +1,6 @@
 from email.parser import FeedParser
 import sys
-import s3storage
+import swiftstorage
 import tokyocabinetindex
 import uuid
 import mailbox
@@ -37,7 +37,7 @@ def index_message(index, uuid, rawmsg, attrs):
         
 
 def sync_index(index, storage, full=False):
-    i_list = index.list_messages([], [])
+    i_list = index.list_messages([])
     s_list = storage.list()
     for uid in s_list:
         print uid
@@ -51,7 +51,7 @@ def sync_index(index, storage, full=False):
 
 
 if __name__=="__main__":
-    s = s3storage.S3Storage('1234', 'api1.cluster.matthewvia.info', 'M9S2K57Q3ECS3F3HEAN8', 'csbQniDf3klLf8AsfaZMoMNG3hQ8l69Ge3gLURlh')
+    s = swiftstorage.SwiftStorage('1234', 'https://auth.api.rackspacecloud.com/v1.0', 'jwitrick', '')
     i = tokyocabinetindex.TokyoCabinetIndex('1234')
     sync_index(i, s, False)
     sys.exit(0)

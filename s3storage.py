@@ -5,7 +5,7 @@ import json
 class S3Storage:
   
     def __init__(self, account, host, accesskey, secretkey):
-        self.conn = boto.connect_s3(accesskey, secretkey, host=host, is_secure=False,
+        self.conn = boto.connect_s3(accesskey, secretkey, host=host, port=443, is_secure=False,
             calling_format = boto.s3.connection.OrdinaryCallingFormat())
         self.bucket = self.conn.get_bucket(account)
 

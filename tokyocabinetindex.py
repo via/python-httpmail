@@ -16,7 +16,10 @@ class TokyoCabinetIndex():
     """
     tag list format:
     "tagname": { "count": 0,
-                 "unread": 0}
+                 "unread": 0,
+                 "created": date int,
+                 "last-modified": date int
+                 }
     
     message format:
     "uuid": { "tags": []
@@ -106,16 +109,18 @@ class TokyoCabinetIndex():
 
     def put_tag(self, tag):
         u = str(uuid.uuid4())
-        self.tags[u] = {'count': '0', 'unread': '0', 'name': str(tag)}
+        self.tags[u] = {'count': '0', 'unread': '0', 'name': str(tag),
+                        'created': '0', 'last-modified': '0'}
 
     def del_tag(self, tag):
         pass
 
     def get_message(self, uuid):
         msg = self.table[str(uuid)]
-        taguids = msg['tags'].split(' ')
+        print uuid
+        taguids = msg['tags'].split(' ') 
         msg['tags'] = [self.tags[t]['name'] for t in taguids]
-        msg['flags'] = msg['flags'].split(' ')
+        msg['flags'] = msg['flags'].split(' ') 
         msg['size'] = int(msg['size'])
         msg['stored'] = int(msg['stored'])
         del msg['date_int']
@@ -129,13 +134,13 @@ class TokyoCabinetIndex():
             if not newtag:
                 raise TagNotFound() 
             taguids += [newtag]
-        msg['tags'] = ' '.join([str(x) for x in taguids])
-        self.table[uuid] = msg
+        msg['tags'] = ' '.join([str(x) for x in taguids]) or ''
+        self.table[str(uuid)] = msg
 
     def put_message_flags(self, uuid, flags):
         msg = self.table[str(uuid)]
-        msg['flags'] = str(' '.join(flags))
-        self.table[uuid] = msg
+        msg['flags'] = str(' '.join(flags)) or ''
+        self.table[str(uuid)] = msg
     
     def put_message(self, uuid, msg):
         newmsg = msg
@@ -145,12 +150,12 @@ class TokyoCabinetIndex():
             if not newtag:
                 raise TagNotFound() 
             taguids += [newtag]
-        newmsg['tags'] = ' '.join([str(x) for x in taguids])
-        newmsg['flags'] = str(' '.join(newmsg['flags']))
+        newmsg['tags'] = ' '.join([str(x) for x in taguids]) or ''
+        newmsg['flags'] = str(' '.join(newmsg['flags'])) or ''
         newmsg['date_int'] = str(int(utils.mktime_tz(utils.parsedate_tz(msg['date']))))
-        msg['size'] = str(int(msg['size']))
-        msg['stored'] = str(int(msg['stored']))
-        self.table[uuid] = newmsg
+        newmsg['size'] = str(int(msg['size']))
+        newmsg['stored'] = str(int(msg['stored']))
+        self.table[str(uuid)] = newmsg
 
     def del_message(self, uuid):
-        self.table.out(uuid)
+        self.table.out(str(uuid))

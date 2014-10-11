@@ -1,4 +1,4 @@
-import s3storage
+import swiftstorage
 import tokyocabinetindex
 import json
 import uuid
@@ -6,12 +6,23 @@ import filter
 import time
 import datetime
 from email.parser import FeedParser
+from email.message import Message
 from flask import Flask, request
 
 app = Flask(__name__)
-s3access = 'M9S2K57Q3ECS3F3HEAN8'
-s3secret = 'csbQniDf3klLf8AsfaZMoMNG3hQ8l69Ge3gLURlh'
-s3host = 'api1.cluster.matthewvia.info'
+swiftuser = 'jwitrick'
+swiftkey = ''
+swifthost = 'https://auth.api.rackspacecloud.com/v1.0'
+endpoint = 'http://s3api.matthewvia.info:5000'
+
+def _mailbox_url(mailbox):
+    return "{0}/mailboxes/{1}".format(endpoint, mailbox)
+
+def _message_url(mailbox, msg):
+    return "{0}/mailboxes/{1}/messages/{2}".format(endpoint, mailbox, msg)
+
+def _tag_url(mailbox, tag):
+    return "{0}/mailboxes/{1}/{2}".format(endpoint, mailbox, tag)
 
 def _msg_to_dict(rawmsg):
     parser = FeedParser()
@@ -31,48 +42,122 @@ def _msg_to_dict(rawmsg):
     }
     return data
 
+@app.route('/mailboxes/<mailbox>')
+def mailbox_get(mailbox):
+    i = tokyocabinetindex.TokyoCabinetIndex(mailbox)
+    sizes = [i.get_message(msg)['size'] for msg in i.list_messages()]
+    res = { 'id': mailbox,
+            'date-created': 'TBD',
+            'date-modified': 'TBD',
+            'message-count': len(sizes),
+            'mailbox-size': sum(sizes)
+          }
+    return (json.dumps(res), 200, {
+               'Content-Type': 'application/json' })
+    
+def _format_tag(i, mailbox, tag):
+    t = { 'tag': tag,
+	  'message-count': int(i.get_tag(tag)['count']),
+	  'unread-count': int(i.get_tag(tag)['unread']),
+	  'created': i.get_tag(tag)['created'],
+	  'last-modified': i.get_tag(tag)['last-modified'],
+	  'mailbox-url': _mailbox_url(mailbox),
+	  'url': _tag_url(mailbox, tag)
+    }
+    return t
+
 @app.route('/mailboxes/<mailbox>/tags/')
 def tags_get(mailbox):
     i = tokyocabinetindex.TokyoCabinetIndex(mailbox)
-    return json.dumps(i.list_tags())
+    res = [ _format_tag(i, mailbox, tag) for tag in i.list_tags() ]
+    return (json.dumps(res), 200,
+               {'Content-Type': 'application/json'})
 
 @app.route('/mailboxes/<mailbox>/tags/<tag>')
 def tag_get(mailbox, tag):
     i = tokyocabinetindex.TokyoCabinetIndex(mailbox)
-    tag = i.get_tag(tag)
-    return ("", 200, {
-        "X-Total-Count": tag['count'],
-        "X-Unread-Count": tag['unread']
-    })
+    if request.method == 'HEAD':
+        tag = i.get_tag(tag)
+        return ("", 200, {
+            'X-Total-Count': tag['count'],
+            'X-Unread-Count': tag['unread']
+        })
+    else:
+        return (json.dumps(_format_tag(i, mailbox, tag)), 200, 
+                   {'Content-Type': 'application/json'})
 
 
 @app.route('/mailboxes/<mailbox>/tags/<tag>', methods=['PUT'])
 def tag_put(mailbox, tag):
     i = tokyocabinetindex.TokyoCabinetIndex(mailbox)
     if tag in i.list_tags():
-        return ("Tag already exists", 409)
+        return ('Tag already exists', 409)
     i.put_tag(tag)
-    return ("", 204)
+    return (json.dumps(_format_tag(i, mailbox, tag)), 201,
+               {'Content-Type': 'application/json'})
 
 @app.route('/mailboxes/<mailbox>/tags/<tag>', methods=['DELETE'])
 def tag_delete(mailbox, tag):
     i = tokyocabinetindex.TokyoCabinetIndex(mailbox)
     return ("Not implemented", 501)
 
-@app.route('/mailboxes/<mailbox>/messages/', methods=['POST'])
+def _msg_from_json(js):
+    msg = Message()
+    fields = json.loads(js)
+    for field, val in fields['headers']:
+        if isinstance(val, list):
+            msg[field] = ','.join(val)
+        else:
+            msg[field] = val
+    msg.set_payload(fields['body'])
+    return str(m)
+    
+
+def _msg_to_response(i, s, mailbox, msgid, get_body=False):
+    res = {}
+    msgi = i.get_message(msgid)
+    if get_body:
+        pass
+    res.update( {
+        "id": msgid,
+        "tags": msgi['tags'],
+        "flags": msgi['flags'],
+        "url": _message_url(mailbox, msgid),
+        "url-mailbox": _mailbox_url(mailbox),
+        "url-tags": "{0}/tags".format(_message_url(mailbox, msgid)),
+        "headers": {
+          "subject": msgi['subject'],
+          "from": msgi['from'],
+          "to": msgi['to'].split(','),
+          "cc": msgi['cc'].split(','),
+          "bcc": msgi['bcc'].split(','),
+          "date": msgi['date'],
+          "stored": msgi['stored'],
+          "size": msgi['size'] 
+        } })
+        
+@app.route('/mailboxes/<mailbox>/messages', methods=['POST'])
 def put_message(mailbox):
     i = tokyocabinetindex.TokyoCabinetIndex(mailbox)
-    s = s3storage.S3Storage(mailbox, s3host, s3access, s3secret)
+    s = swiftstorage.SwiftStorage(mailbox, swifthost, swiftuser, swiftkey)
     u = uuid.uuid4()
-    msg = request.data
+    if request.headers['content-type'] == 'application/json':
+        msg = _msg_from_json(request.data)
+    elif request.headers['content-type'] == 'message/rfc822':
+        msg = request.data
+    else:
+        return ("Unknown Content-Type", 400)
     attrs = { 'tags': [],
               'flags': [],
               'stored': 999 }
     s.put_message(u, msg, attrs)
     indexed_message = _msg_to_dict(msg) 
     indexed_message.update(attrs)
-    i.put_message(u, indexed_msg)
-     
+    i.put_message(u, indexed_message)
+    res = _msg_to_response(i, s, mailbox, u)
+    return (json.dumps(res), 200, 
+        {"Content-Type": "application/json"} )
+ 
 @app.route('/mailboxes/<mailbox>/messages/<message>/tags')
 def get_message_tags(mailbox, message):
     i = tokyocabinetindex.TokyoCabinetIndex(mailbox)
@@ -81,7 +166,7 @@ def get_message_tags(mailbox, message):
 @app.route('/mailboxes/<mailbox>/messages/<message>/tags/<tag>', methods=['PUT', 'DELETE'])
 def put_message_tags(mailbox, message, tag):
     i = tokyocabinetindex.TokyoCabinetIndex(mailbox)
-    s = s3storage.S3Storage(mailbox, s3host, s3access, s3secret)
+    s = swiftstorage.SwiftStorage(mailbox, swifthost, swiftuser, swiftkey)
     newtags = set([str(tag)])
     tags = set(i.get_message(str(message))['tags'])
     if request.method == 'PUT':
@@ -112,7 +197,7 @@ def get_flag_enabled(mailbox, message, flag):
 @app.route('/mailboxes/<mailbox>/messages/<message>/flags/<flag>', methods=['PUT', 'DELETE'])
 def put_flag(mailbox, message, flag):
     i = tokyocabinetindex.TokyoCabinetIndex(mailbox)
-    s = s3storage.S3Storage(mailbox, s3host, s3access, s3secret)
+    s = swiftstorage.SwiftStorage(mailbox, swifthost, swiftuser, swiftkey)
     newflags = set([str(flag)])
     flags = set(i.get_message(str(message))['flags'])
     if request.method == 'PUT':
@@ -127,7 +212,7 @@ def put_flag(mailbox, message, flag):
 
 @app.route('/mailboxes/<mailbox>/messages/<message>')
 def get_message(mailbox, message):
-    s = s3storage.S3Storage(mailbox, s3host, s3access, s3secret)
+    s = swiftstorage.SwiftStorage(mailbox, swifthost, swiftuser, swiftkey)
     rawmsg = s.get_message(str(message))
     if request.method == 'HEAD':
         parser = FeedParser()
@@ -147,7 +232,7 @@ def get_message_meta(mailbox, message):
 
 @app.route('/mailboxes/<mailbox>/messages/<message>', methods=['DELETE'])
 def del_message(mailbox, message):
-    s = s3storage.S3Storage(mailbox, s3host, s3access, s3secret)
+    s = swiftstorage.SwiftStorage(mailbox, swifthost, swiftuser, swiftkey)
     i = tokyocabinetindex.TokyoCabinetIndex(mailbox)
     s.del_message(message)
     i.del_message(message)
