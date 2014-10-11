@@ -1,7 +1,6 @@
 from email.parser import FeedParser
 import sys
-import swiftstorage
-import tokyocabinetindex
+import optparse
 import uuid
 import mailbox
 import urllib
@@ -64,3 +63,6 @@ if __name__=="__main__":
         u = str(uuid.uuid4())
         s.put_message(u, str(msg), attrs)
         print u
+
+if __name__=="__main__":
+

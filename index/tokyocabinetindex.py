@@ -5,6 +5,8 @@ import filter
 import time
 import uuid
 
+name='TokyoCabinetIndex'
+
 class TagNotFound(Exception):
     pass
 
