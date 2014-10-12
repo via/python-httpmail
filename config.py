@@ -23,7 +23,7 @@ class SiteConfig(object):
         self.index_backend = getattr(index_backend_module, classname)
 
     def index(self, user, readonly=False):
-        index = self.index_backend(index_backend_config, user, readonly)
+        index = self.index_backend(self.index_backend_config, user, readonly)
         return index
 
     def storage(self, user):

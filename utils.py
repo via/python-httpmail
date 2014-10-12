@@ -1,5 +1,6 @@
 from email.parser import FeedParser
 import sys
+import config
 import optparse
 import uuid
 import mailbox
@@ -48,21 +49,32 @@ def sync_index(index, storage, full=False):
     for gone_uid in set(i_list).difference(set(s_list)):
         index.del_message(gone_uid)
 
-
-if __name__=="__main__":
-    s = swiftstorage.SwiftStorage('1234', 'https://auth.api.rackspacecloud.com/v1.0', 'jwitrick', '')
-    i = tokyocabinetindex.TokyoCabinetIndex('1234')
-    sync_index(i, s, False)
-    sys.exit(0)
-    mailboxname = sys.argv[1]
-    maildirpath = sys.argv[2]
-    for msg in mailbox.Maildir(maildirpath, factory=None):
-        attrs = { 'tags': [mailboxname],
+def import_maildir(path, storage, name):
+    for msg in mailbox.Maildir(path, factory=None):
+        attrs = { 'tags': [name],
                   'flags': ['\\Seen'],
                   'stored': str(int(msg.get_date())) }
         u = str(uuid.uuid4())
-        s.put_message(u, str(msg), attrs)
+        storage.put_message(u, str(msg), attrs)
         print u
 
 if __name__=="__main__":
+    parser = optparse.OptionParser()
+    parser.add_option("-u", "--user", dest="user", help="User to act on")
+    parser.add_option("-I", "--import", dest="maildir", 
+        help="Import specified maildir to storage")
+    parser.add_option("-S", "--sync", dest="sync", action="store_true", 
+        help="Sync index with storage")
+    parser.add_option("-c", "--config", dest="config", 
+        help="Path to config file", default="httpmail.conf")
 
+    (options, args) = parser.parse_args()
+    conf = config.SiteConfig(options.config)
+    index = conf.index(options.user) 
+    storage = conf.storage(options.user) 
+
+    if options.maildir:
+        import_maildir(options.maildir, storage, 'INBOX') 
+
+    if options.sync:
+        sync_index(index, storage, False)

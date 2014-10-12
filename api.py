@@ -1,5 +1,4 @@
-import swiftstorage
-import tokyocabinetindex
+import config
 import json
 import uuid
 import filter
@@ -14,6 +13,7 @@ swiftuser = 'jwitrick'
 swiftkey = ''
 swifthost = 'https://auth.api.rackspacecloud.com/v1.0'
 endpoint = 'http://s3api.matthewvia.info:5000'
+siteconfig = config.SiteConfig('httpmail.conf')
 
 def _mailbox_url(mailbox):
     return "{0}/mailboxes/{1}".format(endpoint, mailbox)
@@ -44,7 +44,7 @@ def _msg_to_dict(rawmsg):
 
 @app.route('/mailboxes/<mailbox>')
 def mailbox_get(mailbox):
-    i = tokyocabinetindex.TokyoCabinetIndex(mailbox)
+    i = siteconfig.index(mailbox, readonly=True)
     sizes = [i.get_message(msg)['size'] for msg in i.list_messages()]
     res = { 'id': mailbox,
             'date-created': 'TBD',
@@ -68,14 +68,14 @@ def _format_tag(i, mailbox, tag):
 
 @app.route('/mailboxes/<mailbox>/tags/')
 def tags_get(mailbox):
-    i = tokyocabinetindex.TokyoCabinetIndex(mailbox)
+    i = siteconfig.index(mailbox, readonly=True)
     res = [ _format_tag(i, mailbox, tag) for tag in i.list_tags() ]
     return (json.dumps(res), 200,
                {'Content-Type': 'application/json'})
 
 @app.route('/mailboxes/<mailbox>/tags/<tag>')
 def tag_get(mailbox, tag):
-    i = tokyocabinetindex.TokyoCabinetIndex(mailbox)
+    i = siteconfig.index(mailbox, readonly=True)
     if request.method == 'HEAD':
         tag = i.get_tag(tag)
         return ("", 200, {
@@ -89,7 +89,7 @@ def tag_get(mailbox, tag):
 
 @app.route('/mailboxes/<mailbox>/tags/<tag>', methods=['PUT'])
 def tag_put(mailbox, tag):
-    i = tokyocabinetindex.TokyoCabinetIndex(mailbox)
+    i = siteconfig.index(mailbox)
     if tag in i.list_tags():
         return ('Tag already exists', 409)
     i.put_tag(tag)
@@ -98,7 +98,7 @@ def tag_put(mailbox, tag):
 
 @app.route('/mailboxes/<mailbox>/tags/<tag>', methods=['DELETE'])
 def tag_delete(mailbox, tag):
-    i = tokyocabinetindex.TokyoCabinetIndex(mailbox)
+    i = siteconfig.index(mailbox)
     return ("Not implemented", 501)
 
 def _msg_from_json(js):
@@ -138,8 +138,8 @@ def _msg_to_response(i, s, mailbox, msgid, get_body=False):
         
 @app.route('/mailboxes/<mailbox>/messages', methods=['POST'])
 def put_message(mailbox):
-    i = tokyocabinetindex.TokyoCabinetIndex(mailbox)
-    s = swiftstorage.SwiftStorage(mailbox, swifthost, swiftuser, swiftkey)
+    i = siteconfig.index(mailbox)
+    s = siteconfig.storage(mailbox)
     u = uuid.uuid4()
     if request.headers['content-type'] == 'application/json':
         msg = _msg_from_json(request.data)
@@ -160,13 +160,13 @@ def put_message(mailbox):
  
 @app.route('/mailboxes/<mailbox>/messages/<message>/tags')
 def get_message_tags(mailbox, message):
-    i = tokyocabinetindex.TokyoCabinetIndex(mailbox)
+    i = siteconfig.index(mailbox, readonly=True)
     return (json.dumps(i.get_message(str(message))['tags']), 200)
 
 @app.route('/mailboxes/<mailbox>/messages/<message>/tags/<tag>', methods=['PUT', 'DELETE'])
 def put_message_tags(mailbox, message, tag):
-    i = tokyocabinetindex.TokyoCabinetIndex(mailbox)
-    s = swiftstorage.SwiftStorage(mailbox, swifthost, swiftuser, swiftkey)
+    i = siteconfig.index(mailbox)
+    i = siteconfig.storage(mailbox)
     newtags = set([str(tag)])
     tags = set(i.get_message(str(message))['tags'])
     if request.method == 'PUT':
@@ -183,12 +183,12 @@ def put_message_tags(mailbox, message, tag):
 
 @app.route('/mailboxes/<mailbox>/messages/<message>/flags/')
 def get_flags(mailbox, message):
-    i = tokyocabinetindex.TokyoCabinetIndex(mailbox)
+    i = siteconfig.index(mailbox, readonly=True)
     return json.dumps(i.get_message(str(message))['flags'])
 
 @app.route('/mailboxes/<mailbox>/messages/<message>/flags/<flag>')
 def get_flag_enabled(mailbox, message, flag):
-    i = tokyocabinetindex.TokyoCabinetIndex(mailbox)
+    i = siteconfig.index(mailbox, readonly=True)
     if str(flag) in i.get_message(str(message))['flags']:
         return ("", 200)
     else:
@@ -196,8 +196,8 @@ def get_flag_enabled(mailbox, message, flag):
 
 @app.route('/mailboxes/<mailbox>/messages/<message>/flags/<flag>', methods=['PUT', 'DELETE'])
 def put_flag(mailbox, message, flag):
-    i = tokyocabinetindex.TokyoCabinetIndex(mailbox)
-    s = swiftstorage.SwiftStorage(mailbox, swifthost, swiftuser, swiftkey)
+    i = siteconfig.index(mailbox)
+    s = siteconfig.storage(mailbox)
     newflags = set([str(flag)])
     flags = set(i.get_message(str(message))['flags'])
     if request.method == 'PUT':
@@ -212,7 +212,7 @@ def put_flag(mailbox, message, flag):
 
 @app.route('/mailboxes/<mailbox>/messages/<message>')
 def get_message(mailbox, message):
-    s = swiftstorage.SwiftStorage(mailbox, swifthost, swiftuser, swiftkey)
+    s = siteconfig.storage(mailbox)
     rawmsg = s.get_message(str(message))
     if request.method == 'HEAD':
         parser = FeedParser()
@@ -227,13 +227,13 @@ def get_message(mailbox, message):
 
 @app.route('/mailboxes/<mailbox>/messages/<message>/meta')
 def get_message_meta(mailbox, message):
-    i = tokyocabinetindex.TokyoCabinetIndex(mailbox)
+    i = siteconfig.index(mailbox, readonly=True)
     return json.dumps(i.get_message(str(message)))
 
 @app.route('/mailboxes/<mailbox>/messages/<message>', methods=['DELETE'])
 def del_message(mailbox, message):
-    s = swiftstorage.SwiftStorage(mailbox, swifthost, swiftuser, swiftkey)
-    i = tokyocabinetindex.TokyoCabinetIndex(mailbox)
+    i = siteconfig.index(mailbox)
+    s = siteconfig.storage(mailbox)
     s.del_message(message)
     i.del_message(message)
 
@@ -249,7 +249,7 @@ def _encode_list_filter(f):
 
 @app.route('/mailboxes/<mailbox>/messages/')
 def list_messages(mailbox):
-    i = tokyocabinetindex.TokyoCabinetIndex(mailbox)
+    i = siteconfig.index(mailbox, readonly=True)
     try:
         body = json.loads(request.data)
     except:

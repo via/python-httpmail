@@ -2,6 +2,7 @@ from tokyocabinet import table, btree
 from email import utils
 import json
 import filter
+import os
 import time
 import uuid
 
@@ -42,12 +43,16 @@ class TokyoCabinetIndex():
     
     """
 
-    def __init__(self, path):
+    def __init__(self, config, user, readonly):
+        path = os.path.join(config['basepath'], user)
         self.table = table.Table()
-        self.table.open(path, table.TDBOWRITER | table.TDBOCREAT)
+        flags = table.TDBOCREAT
+        if not readonly:
+            flags = flags | table.TDBOWRITER
+        self.table.open(path, flags)
 
         self.tags = table.Table()
-        self.tags.open("{0}-tags".format(path), table.TDBOWRITER | table.TDBOCREAT)
+        self.tags.open("{0}-tags".format(path), flags)
 
     def _verb_to_tcfilter(self, verb):
         if verb is filter.FilterVerb.Greater: 
