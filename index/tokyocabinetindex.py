@@ -122,6 +122,16 @@ class TokyoCabinetIndex():
     def del_tag(self, tag):
         pass
 
+    def updateTagCount(self, oldtags, newtags):
+        for new in set(newtags).difference(set(oldtags)):
+            t = self.tags[new]
+            t['count'] = str((int(t['count']) + 1))
+            self.tags[new] = t
+        for removed in set(oldtags).difference(set(newtags)):
+            t = self.tags[removed]
+            t['count'] = str((int(t['count']) - 1))
+            self.tags[removed] = t
+
     def get_message(self, uuid):
         msg = self.table[str(uuid)]
         print uuid
@@ -136,11 +146,13 @@ class TokyoCabinetIndex():
     def put_message_tags(self, uuid, newtags):
         msg = self.table[str(uuid)]
         taguids = []
+        oldtaguids = self.table[str(uuid)]['tags'].split(' ') or []
         for tag in newtags:
             newtag = self._tag_to_uuid(tag)
             if not newtag:
                 raise TagNotFound() 
             taguids += [newtag]
+        self.updateTagCount(oltaguids, taguids)
         msg['tags'] = ' '.join([str(x) for x in taguids]) or ''
         self.table[str(uuid)] = msg
 
@@ -157,6 +169,7 @@ class TokyoCabinetIndex():
             if not newtag:
                 raise TagNotFound() 
             taguids += [newtag]
+        self.updateTagCount([], taguids)
         newmsg['tags'] = ' '.join([str(x) for x in taguids]) or ''
         newmsg['flags'] = str(' '.join(newmsg['flags'])) or ''
         newmsg['date_int'] = str(int(utils.mktime_tz(utils.parsedate_tz(msg['date']))))
