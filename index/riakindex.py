@@ -113,11 +113,11 @@ class RiakIndex():
             sortdir = "asc" if sort[1] else "desc"
             sortstr = "{0} {1}".format(sortattr, sortdir)
         else:
-            sortstr = ""    
+            sortstr = None
         print querystr
         print sortstr
         if limit is None:
-            limit = (0, 50)
+            limit = (1000000, 0)
         res = self.client.fulltext_search(self.user, querystr, start=limit[1], rows=limit[0], sort=sortstr)
         return [doc['_yz_rk'] for doc in res['docs']]
         
