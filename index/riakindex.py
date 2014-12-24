@@ -80,7 +80,34 @@ class RiakIndex():
 
 
     def list_messages(self, filterlist=[], sort=None, limit=None):
-        return self.client.bucket(self.user).get_keys()
+        if len(filterlist) == 0:
+            query = ["*:*"]
+        else:
+            query = []
+        for fil, verb, value in filterlist:
+            if fil in ['to', 'from', 'cc', 'bcc', 'subject']:
+                query.append("{0}_s:*{1}*".format(fil, value))
+            if fil in ['stored', 'size']:
+                if verb is filter.FilterVerb.Greater:
+                    query.append("{0}_i:[{1} TO *]".format(fil, value))
+                if verb is filter.FilterVerb.Less:
+                    query.append("{0}_i:[0 TO {1}]".format(fil, value))
+            if fil in ['tag', 'flag']:
+                query.append("{0}_s:{1}".format(fil, value))
+            if fil in ['date']:
+               d = time.mktime(utils.parsedate(value))
+               if verb is filter.FilterVerb.Greater:
+                   query.append("date_int_i:[{1} TO *]".format(value))
+               if verb is filter.FilterVerb.Less:
+                   query.append("date_int_i:[0 TO {1}]".format(value))
+               
+            
+        querystr = " AND ".join(query)
+        print querystr
+        if limit is None:
+            limit = (0, 50)
+        res = self.client.fulltext_search(self.user, querystr, start=limit[1], rows=limit[0])
+        return [doc['_yz_rk'] for doc in res['docs']]
         
 
     def list_tags(self):
