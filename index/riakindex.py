@@ -103,10 +103,22 @@ class RiakIndex():
                
             
         querystr = " AND ".join(query)
+        if sort is not None:
+            if sort[0] in ['size', 'stored']:
+                sortattr = "{0}_i".format(sort)
+            elif sort[0] in ['date']:
+                sortattr = "date_int_i"
+            else:
+                sortattr = "{0}_s".format(sort)
+            sortdir = "asc" if sort[1] else "desc"
+            sortstr = "{0} {1}".format(sortattr, sortdir)
+        else:
+            sortstr = ""    
         print querystr
+        print sortstr
         if limit is None:
             limit = (0, 50)
-        res = self.client.fulltext_search(self.user, querystr, start=limit[1], rows=limit[0])
+        res = self.client.fulltext_search(self.user, querystr, start=limit[1], rows=limit[0], sort=sortstr)
         return [doc['_yz_rk'] for doc in res['docs']]
         
 
