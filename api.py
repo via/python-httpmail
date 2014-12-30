@@ -166,7 +166,7 @@ def get_message_tags(mailbox, message):
 @app.route('/mailboxes/<mailbox>/messages/<message>/tags/<tag>', methods=['PUT', 'DELETE'])
 def put_message_tags(mailbox, message, tag):
     i = siteconfig.index(mailbox)
-    i = siteconfig.storage(mailbox)
+    s = siteconfig.storage(mailbox)
     newtags = set([str(tag)])
     tags = set(i.get_message(str(message))['tags'])
     if request.method == 'PUT':

@@ -1,0 +1,24 @@
+space messages
+key uuid
+attributes
+  string user,
+  string to,
+  string from,
+  string subject,
+  string cc,
+  string bcc,
+  string date,
+  int dateint,
+  int stored,
+  int size,
+  set(string) tags,
+  set(string) flags
+subspace user
+index stored 
+index dateint
+index tags
+index flags
+index size
+create 8 partitions
+tolerate 2 failures
+

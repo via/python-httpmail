@@ -5,6 +5,7 @@ import os
 import time
 import uuid
 import riak
+from dateutil.parser import parse
 
 name='RiakIndex'
 
@@ -44,9 +45,9 @@ class RiakIndex():
     """
 
     def __init__(self, config, user, readonly):
-        self.client = riak.RiakClient(protocol=config['proto'], host=config['host'], 
-                                      http_port=config['port'])
-        self.user = user
+        self.client = riak.RiakClient(protocol=config['proto'], host=config['host'])
+          
+        self.user = str(user)
         self.tagbucket = 'tags'
 
     def _remove_suffix(self, msg):
@@ -65,7 +66,17 @@ class RiakIndex():
 
     def _add_suffix(self, msg):
         newmsg = {}
-        newmsg['date_int_i'] = int(utils.mktime_tz(utils.parsedate_tz(msg['date'])))
+        print msg['date']
+        if msg['date'] is None:
+            newmsg['date_int_i'] = 0
+        else:
+            time = utils.parsedate_tz(msg['date'])
+            if time is None:
+                time = parse(msg['date'])
+                if time is None:
+                    time = 0
+                time = time.timetuple()+ (0,)
+            newmsg['date_int_i'] = int(utils.mktime_tz(time))
         newmsg['date_s'] = msg['date']
         newmsg['size_i'] = int(msg['size'])
         newmsg['stored_i'] = int(msg['stored'])
@@ -105,11 +116,11 @@ class RiakIndex():
         querystr = " AND ".join(query)
         if sort is not None:
             if sort[0] in ['size', 'stored']:
-                sortattr = "{0}_i".format(sort)
+                sortattr = "{0}_i".format(sort[0])
             elif sort[0] in ['date']:
                 sortattr = "date_int_i"
             else:
-                sortattr = "{0}_s".format(sort)
+                sortattr = "{0}_s".format(sort[0])
             sortdir = "asc" if sort[1] else "desc"
             sortstr = "{0} {1}".format(sortattr, sortdir)
         else:
@@ -118,7 +129,10 @@ class RiakIndex():
         print sortstr
         if limit is None:
             limit = (1000000, 0)
-        res = self.client.fulltext_search(self.user, querystr, start=limit[1], rows=limit[0], sort=sortstr)
+        if sort is None:
+            res = self.client.fulltext_search(self.user, querystr, start=limit[1], rows=limit[0])
+        else:
+            res = self.client.fulltext_search(self.user, querystr, start=limit[1], rows=limit[0], sort=sortstr)
         return [doc['_yz_rk'] for doc in res['docs']]
         
 
@@ -152,7 +166,7 @@ class RiakIndex():
         return msg
 
     def put_message_tags(self, uuid, newtags):
-        totaltags = set(self.list_tags)
+        totaltags = set(self.list_tags())
         if not set(newtags).issubset(totaltags):
             raise TagNotFound()
         msg = self.client.bucket(self.user).get(uuid)
@@ -165,9 +179,12 @@ class RiakIndex():
         msg.store()
     
     def put_message(self, uuid, msg):
+        for field in ['to', 'from', 'cc', 'bcc', 'subject', 'date']:
+            msg[field] = msg[field].decode('iso-8859-1')
         newmsg = self._add_suffix(msg)
         bucket = self.client.bucket(self.user)
         k = bucket.new(uuid, data=newmsg)
+        print newmsg
         k.store()
 
     def del_message(self, uuid):
