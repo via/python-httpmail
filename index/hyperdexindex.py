@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime
 from dateutil.parser import parse
 
-from hyperdex.client import Client, Contains
+from hyperdex.client import Client, Contains, Equals, LessThan, GreaterThan, Regex
 
 name='HyperdexIndex'
 
@@ -74,8 +74,47 @@ class HyperdexIndex():
     def _update_modified(self):
         self.client.put(self.tags, self.user, {'modified': int(time.time())})
 
+    def _number_compare(self, verb, number):
+        if verb is filter.FilterVerb.Contains:
+            return Equals(number)
+        if verb is filter.FilterVerb.Less:
+            return LessThan(number)
+        if verb is filter.FilterVerb.Greater:
+            return GreaterThan(number)
+
     def list_messages(self, filterlist=[], sort=None, limit=None):
-        return [msg['uuid'] for msg in self.client.search(self.messages, {'user': self.user})]
+        filters = {'user': self.user}
+        
+        for filter, verb, value in filterlist:
+            if filter in ['to', 'from', 'cc',
+                    'bcc', 'subject']:
+                filters[filter] = Regex(str(value))
+            elif filter in ['stored', 'size']:
+                filters[filter] = self._number_compare(verb, int(value))
+            elif filter in ['date']:
+                d = time.mktime(utils.parsedate(value))
+                filters['dateint'] = self._number_compare(verb, int(d))
+            elif filter in ['tag']:
+                filters['tags'] = Contains(str(value))
+            elif filter in ['flag']:
+                filters['flags'] = Contains(str(value))
+                
+        if sort is None:
+            sortfield = 'uuid'
+        elif sort[0] == 'date':
+            sortfield = 'dateint'
+        else:
+            sortfield = str(sort[0])
+        
+        if not sort or sort[1] is True:
+            sortdir = 'maximize'
+        else:
+            sortdir = 'minimize'
+
+        if limit is None:
+            limit = (50, 0)
+        return [msg['uuid'] for msg in self.client.sorted_search(self.messages, filters, sortfield, limit[0] + limit[1], sortdir)][::-1][limit[1]:]
+ 
         
 
     def list_tags(self):
@@ -149,6 +188,6 @@ class HyperdexIndex():
              "created": row['created'],
              "modified": row['modified'],
              "size": row['size'],
-             "count": self.count(self.messages, {'user': self.user})
+             "count": self.client.count(self.messages, {'user': self.user})
             }
         return u

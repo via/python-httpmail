@@ -45,12 +45,12 @@ def _msg_to_dict(rawmsg):
 @app.route('/mailboxes/<mailbox>')
 def mailbox_get(mailbox):
     i = siteconfig.index(mailbox, readonly=True)
-    sizes = [i.get_message(msg)['size'] for msg in i.list_messages()]
+    box = i.get_user()
     res = { 'id': mailbox,
-            'date-created': 'TBD',
-            'date-modified': 'TBD',
-            'message-count': len(sizes),
-            'mailbox-size': sum(sizes)
+            'date-created': box['created'],
+            'date-modified': box['modified'],
+            'message-count': box['count'],
+            'mailbox-size': box['size'] 
           }
     return (json.dumps(res), 200, {
                'Content-Type': 'application/json' })
