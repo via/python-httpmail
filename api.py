@@ -138,7 +138,7 @@ def _msg_to_response(i, s, mailbox, msgid, get_body=False):
           "size": msgi['size'] 
         } })
         
-@app.route('/mailboxes/<mailbox>/messages', methods=['POST'])
+@app.route('/mailboxes/<mailbox>/messages/', methods=['POST'])
 def put_message(mailbox):
     i = siteconfig.index(mailbox)
     s = siteconfig.storage(mailbox)
@@ -160,7 +160,7 @@ def put_message(mailbox):
     return (json.dumps(res), 200, 
         {"Content-Type": "application/json"} )
  
-@app.route('/mailboxes/<mailbox>/messages/<message>/tags')
+@app.route('/mailboxes/<mailbox>/messages/<message>/tags/')
 def get_message_tags(mailbox, message):
     i = siteconfig.index(mailbox, readonly=True)
     return (json.dumps(i.get_message(str(message))['tags']), 200)
