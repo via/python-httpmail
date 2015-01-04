@@ -41,7 +41,6 @@ def sync_index(index, storage, full=False):
     i_list = index.list_messages([])
     s_list = storage.list()
     for uid in s_list:
-        print uid
         if uid in i_list and not full:
                #check flags/tags
                 pass
@@ -64,8 +63,12 @@ if __name__=="__main__":
     parser.add_option("-u", "--user", dest="user", help="User to act on")
     parser.add_option("-I", "--import", dest="maildir", 
         help="Import specified maildir to storage")
+    parser.add_option("-R", "--repair", dest="repair", action="store_true",
+        help="Verify index internal consistancy")
     parser.add_option("-S", "--sync", dest="sync", action="store_true", 
         help="Sync index with storage")
+    parser.add_option("-t", "--tag", dest="tag", default="INBOX",
+        help="When importing a maildir, what tag to associate with")
     parser.add_option("-c", "--config", dest="config", 
         help="Path to config file", default="httpmail.conf")
 
@@ -75,7 +78,10 @@ if __name__=="__main__":
     storage = conf.storage(options.user) 
 
     if options.maildir:
-        import_maildir(options.maildir, storage, 'archive') 
+        import_maildir(options.maildir, storage, options.tag)
 
     if options.sync:
         sync_index(index, storage, False)
+
+    if options.repair:
+        index.repair()

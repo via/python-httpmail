@@ -125,7 +125,7 @@ class HyperdexIndex():
             sortdir = 'minimize'
 
         if limit is None:
-            limit = (50, 0)
+            limit = (5000000, 0)
  
         res = [msg['uuid'] for msg in self.client.sorted_search(self.messages, filters, sortfield, limit[0] + limit[1], sortdir)]
         return res[0:len(res) - limit[1]][::-1]
@@ -166,26 +166,29 @@ class HyperdexIndex():
         return msg
 
     def put_message_tags(self, uuid, newtags):
+        uuid = str(uuid)
         totaltags = self.client.get(self.tags, self.user)['tags']
-        flags = self.client.get(self.tags, self.user)['flags']
+        oldtags = self.client.get(self.messages, uuid)['tags']
+        flags = self.client.get(self.messages, uuid)['flags']
         if not set(newtags).issubset(totaltags):
             raise TagNotFound()
-        for old in totaltags:
+        for old in oldtags:
             if old not in newtags:
                 self._update_tag_modified(old)
                 self._update_tag_count(old, -1)
                 if "\\Seen" not in flags:
                     self._update_tag_unread_count(old, -1)
         for new in newtags:
-            if new not in totaltags:
-                self._update_tag_unread_count(new, 1)
+            if new not in oldtags:
+                self._update_tag_count(new, 1)
                 self._update_tag_modified(new)
                 if "\\Seen" not in flags:
                     self._update_tag_unread_count(new, 1)
         self.client.put(self.messages, str(uuid), {'tags': set(newtags)})
 
     def put_message_flags(self, uuid, flags):
-        oldflags = self.client.get(self.tags, self.user)['flags']
+        uuid = str(uuid)
+        oldflags = self.client.get(self.messages, uuid)['flags']
         tags = self.client.get(self.tags, self.user)['tags']
         self.client.put(self.messages, str(uuid), {'flags': set([str(x) for x in flags])})
         if "\\Seen" in oldflags and "\\Seen" not in flags:
