@@ -54,6 +54,10 @@ class HyperdexIndex():
         self.tags = config['tag_space']
         self.messages = config['message_space']
 
+    def _init_user(self):
+        if not self.client.get(self.tags, self.user):
+            self.client.put(self.tags, self.user, {'tags': set([]), 'created': 0})
+
     def _parse_date(self, date):
         if date is None:
             dateint = 0
@@ -73,6 +77,15 @@ class HyperdexIndex():
 
     def _update_modified(self):
         self.client.put(self.tags, self.user, {'modified': int(time.time())})
+
+    def _update_tag_count(self, tag, delta):
+        self.client.map_atomic_add(self.tags, self.user, {'tag_count': {str(tag): delta}})
+
+    def _update_tag_unread_count(self, tag, delta):
+        self.client.map_atomic_add(self.tags, self.user, {'tag_unread_count': {str(tag): delta}})
+
+    def _update_tag_modified(self, tag):
+        self.client.map_add(self.tags, self.user, {'tag_modified': {str(tag): int(time.time())}})
 
     def _number_compare(self, verb, number):
         if verb is filter.FilterVerb.Contains:
@@ -113,30 +126,33 @@ class HyperdexIndex():
 
         if limit is None:
             limit = (50, 0)
-        return [msg['uuid'] for msg in self.client.sorted_search(self.messages, filters, sortfield, limit[0] + limit[1], sortdir)][::-1][limit[1]:]
  
-        
+        res = [msg['uuid'] for msg in self.client.sorted_search(self.messages, filters, sortfield, limit[0] + limit[1], sortdir)]
+        return res[0:len(res) - limit[1]][::-1]
 
     def list_tags(self):
+        self._init_user()
         tags = self.client.get(self.tags, self.user)['tags']
         return list(tags) or []
 
     def get_tag(self, tag):
         if not tag in self.list_tags():
             return None
-        count = self.client.count(self.messages, {'user': self.user, 'tags': Contains(str(tag))})
-        r = {"count": count,
-             "unread": count - self.client.count(self.messages, {'user': self.user,
-                                                                 'tags': Contains(tag),
-                                                                 'flags': Contains('\\Seen')}),
-             "created": 0,
-             "last-modified": 0}
+        tagdata = self.client.get(self.tags, self.user)
+        r = {"count": tagdata['tag_count'][tag],
+             "unread": tagdata['tag_unread_count'][tag],
+             "created": tagdata['tag_created'][tag],
+             "last-modified": tagdata['tag_modified'][tag]}
         return r
 
     def put_tag(self, tag):
         if not self.client.get(self.tags, self.user):
-            self.client.put(self.tags, self.user, {'tags': set([]), 'created': 0})
+           self._init_user()
         self.client.set_add(self.tags, self.user, {'tags': str(tag)})
+        self.client.map_add(self.tags, self.user, {'tag_unread_count': {str(tag): 0}})
+        self.client.map_add(self.tags, self.user, {'tag_count': {str(tag): 0}})
+        self.client.map_add(self.tags, self.user, {'tag_created': {str(tag): int(time.time())}})
+        self.client.map_add(self.tags, self.user, {'tag_modified': {str(tag): int(time.time())}})
 
     def del_tag(self, tag):
         pass
@@ -144,19 +160,42 @@ class HyperdexIndex():
     def get_message(self, uuid):
         msg = self.client.get(self.messages, uuid)
         del msg['dateint']
+        del msg['user']
         msg['tags'] = list(msg['tags'])
         msg['flags'] = list(msg['flags'])
         return msg
 
     def put_message_tags(self, uuid, newtags):
         totaltags = self.client.get(self.tags, self.user)['tags']
+        flags = self.client.get(self.tags, self.user)['flags']
         if not set(newtags).issubset(totaltags):
             raise TagNotFound()
-        print newtags
+        for old in totaltags:
+            if old not in newtags:
+                self._update_tag_modified(old)
+                self._update_tag_count(old, -1)
+                if "\\Seen" not in flags:
+                    self._update_tag_unread_count(old, -1)
+        for new in newtags:
+            if new not in totaltags:
+                self._update_tag_unread_count(new, 1)
+                self._update_tag_modified(new)
+                if "\\Seen" not in flags:
+                    self._update_tag_unread_count(new, 1)
         self.client.put(self.messages, str(uuid), {'tags': set(newtags)})
 
     def put_message_flags(self, uuid, flags):
+        oldflags = self.client.get(self.tags, self.user)['flags']
+        tags = self.client.get(self.tags, self.user)['tags']
         self.client.put(self.messages, str(uuid), {'flags': set([str(x) for x in flags])})
+        if "\\Seen" in oldflags and "\\Seen" not in flags:
+            for tag in tags:
+                self._update_tag_unread_count(tag, 1)
+        if "\\Seen" not in oldflags and "\\Seen" in flags:
+            for tag in tags:
+                self._update_tag_unread_count(tag, -1)
+        for tag in tags:
+            self._update_tag_modified(tag)        
 
     def _encode_strings(self, msg):
         for field in ['to', 'from', 'cc', 'bcc', 'subject', 'date']:
@@ -166,6 +205,7 @@ class HyperdexIndex():
         return msg
     
     def put_message(self, uuid, msg):
+        self._init_user()
         msg = self._encode_strings(msg)
         msg['tags'] = set(msg['tags'])
         msg['flags'] = set(msg['flags'])
@@ -173,21 +213,33 @@ class HyperdexIndex():
         msg['user'] = self.user
         self.client.put(self.messages, uuid, msg)
         self._update_size(msg['size'])
+        for tag in msg['tags']:
+            self._update_tag_modified(tag)        
+            self._update_tag_count(tag, 1)
+            if '\\Seen' not in msg['flags']:
+                self._update_tag_unread_count(tag, 1)
         self._update_modified()
          
 
     def del_message(self, uuid):
-        size = self.get_message(uuid)['size']
+        msg = self.get_message(uuid)
         self.client.delete(self.messages, uuid)
-        self._update_size(-size)
+        self._update_size(-msg['size'])
+        for tag in msg['tags']:
+            self._update_tag_modified(tag)        
+            self._update_tag_count(tag, -1)
+            if '\\Seen' in msg['flags']:
+                self._update_tag_unread_count(tag, -1)
         self._update_modified()
 
     def get_user(self):
+        self._init_user()
         row = self.client.get(self.tags, self.user)
+        count = sum(row['tag_count'].values())
         u = {"user": self.user,
              "created": row['created'],
              "modified": row['modified'],
              "size": row['size'],
-             "count": self.client.count(self.messages, {'user': self.user})
+             "count": count
             }
         return u

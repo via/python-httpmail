@@ -7,8 +7,10 @@ import datetime
 from email.parser import FeedParser
 from email.message import Message
 from flask import Flask, request
+from flask.ext.runner import Runner
 
 app = Flask(__name__)
+runner = Runner(app)
 swiftuser = 'jwitrick'
 swiftkey = ''
 swifthost = 'https://auth.api.rackspacecloud.com/v1.0'
@@ -276,4 +278,4 @@ def list_messages(mailbox):
     
 
 if __name__ == "__main__":
-    app.run(debug=True, threaded=True)
+    runner.run()

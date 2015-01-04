@@ -4,6 +4,7 @@ import json
 import filter
 import os
 import time
+from datetime import datetime
 import uuid
 
 name='TokyoCabinetIndex'
@@ -70,6 +71,20 @@ class TokyoCabinetIndex():
             return None
         else:
             return tags[0]
+
+    def _parse_date(self, date):
+        if date is None:
+            dateint = 0
+        else:
+            dtime = utils.parsedate_tz(date)
+            if dtime is None:
+                try:
+                    dtime = parse(date)
+                except:
+                    dtime = datetime.now()
+                dtime = dtime.timetuple()+ (0,)
+            dateint = int(utils.mktime_tz(dtime))
+        return dateint
 
     def list_messages(self, filterlist=[], sort=None, limit=None):
         q = self.table.query()
@@ -172,7 +187,7 @@ class TokyoCabinetIndex():
         self.updateTagCount([], taguids)
         newmsg['tags'] = ' '.join([str(x) for x in taguids]) or ''
         newmsg['flags'] = str(' '.join(newmsg['flags'])) or ''
-        newmsg['date_int'] = str(int(utils.mktime_tz(utils.parsedate_tz(msg['date']))))
+        newmsg['date_int'] = str(self._parse_date(msg['date']))
         newmsg['size'] = str(int(msg['size']))
         newmsg['stored'] = str(int(msg['stored']))
         self.table[str(uuid)] = newmsg

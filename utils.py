@@ -38,15 +38,15 @@ def index_message(index, uuid, rawmsg, attrs):
         
 
 def sync_index(index, storage, full=False):
-    #i_list = index.list_messages([])
+    i_list = index.list_messages([])
     s_list = storage.list()
     for uid in s_list:
         print uid
-    #    if uid in i_list and not full:
-                #check flags/tags
-    #            pass
-    #    else:
-        index_message(index, uid, storage.get_message(uid), storage.get_attrs(uid))
+        if uid in i_list and not full:
+               #check flags/tags
+                pass
+        else:
+            index_message(index, uid, storage.get_message(uid), storage.get_attrs(uid))
     for gone_uid in set(i_list).difference(set(s_list)):
         index.del_message(gone_uid)
 
@@ -75,7 +75,7 @@ if __name__=="__main__":
     storage = conf.storage(options.user) 
 
     if options.maildir:
-        import_maildir(options.maildir, storage, 'INBOX') 
+        import_maildir(options.maildir, storage, 'archive') 
 
     if options.sync:
         sync_index(index, storage, False)

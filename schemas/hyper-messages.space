@@ -20,5 +20,5 @@ index tags
 index flags
 index size
 create 8 partitions
-tolerate 2 failures
+tolerate 1 failures
 

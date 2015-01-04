@@ -4,7 +4,11 @@ attributes
   set(string) tags,
   int created,
   int modified,
-  int size
-create 257 partitions
-tolerate 2 failures
+  int size,
+  map(string, int) tag_count,
+  map(string, int) tag_unread_count,
+  map(string, int) tag_created,
+  map(string, int) tag_modified
+create 8 partitions
+tolerate 1 failures
 
