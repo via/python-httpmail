@@ -112,7 +112,7 @@ class HyperdexIndex():
             elif filter in ['flag']:
                 filters['flags'] = Contains(str(value))
                 
-        if sort is None:
+        if sort is None or sort[0] is None:
             sortfield = 'uuid'
         elif sort[0] == 'date':
             sortfield = 'dateint'
@@ -127,6 +127,10 @@ class HyperdexIndex():
         if limit is None:
             limit = (5000000, 0)
  
+        print filters
+        print sort
+        print sortdir
+        print limit
         res = [msg['uuid'] for msg in self.client.sorted_search(self.messages, filters, sortfield, limit[0] + limit[1], sortdir)]
         return res[0:len(res) - limit[1]][::-1]
 

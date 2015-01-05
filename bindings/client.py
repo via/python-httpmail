@@ -1,4 +1,5 @@
 import requests
+import json
 
 class Client():
     def __init__(self, uri):
@@ -73,5 +74,5 @@ class Client():
     def list_messages(self, mailbox, filters=[], sortfield=None, descending=False, skip=0, limit=50):
         payload = {"filters": filters, "sort": {"field": sortfield, "reverse": descending}}
         params = {"skip": skip, "limit": limit}
-        r = requests.get("{0}/mailboxes/{1}/messages/".format(self.uri, mailbox), data=payload, params=params)
+        r = requests.get("{0}/mailboxes/{1}/messages/".format(self.uri, mailbox), data=json.dumps(payload), params=params)
         return r.json() 
