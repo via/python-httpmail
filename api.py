@@ -163,7 +163,8 @@ def put_message(mailbox):
 @app.route('/mailboxes/<mailbox>/messages/<message>/tags/')
 def get_message_tags(mailbox, message):
     i = siteconfig.index(mailbox, readonly=True)
-    return (json.dumps(i.get_message(str(message))['tags']), 200)
+    return (json.dumps(i.get_message(str(message))['tags']), 200,
+               {'Content-Type': 'application/json'})
 
 @app.route('/mailboxes/<mailbox>/messages/<message>/tags/<tag>', methods=['PUT', 'DELETE'])
 def put_message_tags(mailbox, message, tag):
@@ -181,12 +182,14 @@ def put_message_tags(mailbox, message, tag):
     attrs = s.get_attrs(str(message))
     attrs['tags'] = list(tags)
     s.put_attrs(message, attrs)
-    return ""
+    return ("", 200)
 
 @app.route('/mailboxes/<mailbox>/messages/<message>/flags/')
 def get_flags(mailbox, message):
     i = siteconfig.index(mailbox, readonly=True)
-    return json.dumps(i.get_message(str(message))['flags'])
+    return (json.dumps(i.get_message(str(message))['flags']), 200,
+               {'Content-Type': 'application/json'})
+
 
 @app.route('/mailboxes/<mailbox>/messages/<message>/flags/<flag>')
 def get_flag_enabled(mailbox, message, flag):
@@ -210,7 +213,7 @@ def put_flag(mailbox, message, flag):
     attrs = s.get_attrs(str(message))
     attrs['flags'] = list(flags)
     s.put_attrs(message, attrs)
-    return ""
+    return ("", 200)
 
 @app.route('/mailboxes/<mailbox>/messages/<message>')
 def get_message(mailbox, message):
@@ -225,12 +228,13 @@ def get_message(mailbox, message):
             return ("Unable to parse message", 500)
         return ''.join(["%{0}: {1}\n".format(k, v) for (k, v) in msg.items()])
     else:
-        return rawmsg     
+        return (rawmsg, 200, {"Content-Type": "application/json"})
 
 @app.route('/mailboxes/<mailbox>/messages/<message>/meta')
 def get_message_meta(mailbox, message):
     i = siteconfig.index(mailbox, readonly=True)
-    return json.dumps(i.get_message(str(message)))
+    return (json.dumps(i.get_message(str(message))), 200, 
+               {'Content-Type': 'application/json'})
 
 @app.route('/mailboxes/<mailbox>/messages/<message>', methods=['DELETE'])
 def del_message(mailbox, message):
@@ -238,6 +242,7 @@ def del_message(mailbox, message):
     s = siteconfig.storage(mailbox)
     s.del_message(message)
     i.del_message(message)
+    return ("", 204, {"Content-Type": "application/json"})
 
 def _encode_list_filter(f):
     field = f['field']
@@ -274,7 +279,8 @@ def list_messages(mailbox):
     if 'sort' in body:
         sort = (body['sort']['field'], False if body['sort']['reverse'] else True)
   
-    return json.dumps(i.list_messages(filterlist=list_filters, sort=sort, limit=limit))
+    return (json.dumps(i.list_messages(filterlist=list_filters, sort=sort, limit=limit)),
+            200, {"Content-Type": "application/json"})
     
 
 if __name__ == "__main__":
