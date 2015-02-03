@@ -34,7 +34,14 @@ class AIOHTTPMail():
 
     @asyncio.coroutine
     def create_message(self, mailbox, message):
-        pass
+        headers = {'Content-type': 'application/json'}
+        r = yield from aiohttp.request("post", "{0}/mailboxes/".format(self.uri),
+                                       headers=headers,
+                                       data=message)
+        status = yield from r.status
+        if status != 200:
+            return None
+        return (yield from r.json())
 
     @asyncio.coroutine
     def get_message_tags(self, mailbox, message):
