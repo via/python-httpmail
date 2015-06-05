@@ -8,17 +8,22 @@ attributes
   string cc,
   string bcc,
   string date,
-  int dateint,
-  int stored,
+  string folder,
+  timestamp(second) intdate,
+  timestamp(second) stored,
+  timestamp(second) last_modified,
   int size,
-  set(string) tags,
-  set(string) flags
+  set(string) flags,
+  document structure,
+  int imap_uid,
+  string pop3_uidl,
+  document annotations
 subspace user
-index stored 
-index dateint
-index tags
+index intdate
+index folder
 index flags
-index size
-create 8 partitions
+index last_modified
+index imap_uid
+create 1 partitions
 tolerate 1 failures
 

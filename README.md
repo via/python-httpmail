@@ -1,24 +1,24 @@
 
 # API Documentation
 
-### GET /mailboxes/`mailbox`/tags/
+### GET /mailboxes/`mailbox`/folders/
 
-Returns a JSON list of tags for the mailbox.
+Returns a JSON list of folders for the mailbox.
 
-### HEAD /mailboxes/`mailbox`/tags/`tag`/
+### HEAD /mailboxes/`mailbox`/folder/`folder`/
 
 The headers `X-Total-Count` and `X-Unread-Count` contain the number of total
 messages in the directory and the number of unread messages with the
-tag, respectively.
+folder, respectively.
 
-### PUT /mailboxes/`mailbox`/tags/`tag`
+### PUT /mailboxes/`mailbox`/folders/`folder`
 
-Create a new tag.
+Create a new folder.
 
-### DELETE /mailboxes/`mailbox`/tags/`tag`
+### DELETE /mailboxes/`mailbox`/folder/`folder`
 
-Deletes the tag, and any messages that are associated only with the one
-tag.
+Deletes the folder, and any messages that are associated only with the one
+folder.
 
 ### POST /mailboxes/`mailbox`/messages/
 
@@ -41,7 +41,7 @@ Message filters can be added in a json list under the "filters" element:
 
 Field can be any of:
 ```
-tag
+folder
 flag
 bcc
 body
@@ -53,6 +53,9 @@ cc
 size 
 date
 stored
+modified
+imap_uid
+pop3_uidl
 ```
 
 Each filter requires a qualifier, `>`, `<`, `=`, expressing
@@ -106,22 +109,15 @@ Example:
 }
 ```
 
-### GET /mailboxes/`mailbox`/messages/`id`/tags
-
-Returns a json list of tags the message is associated with.
-
-### PUT /mailboxes/`mailbox`/messages/`id`/tags/`tag`
-
-Sets the given tag for the message;
-
-### DELETE /mailboxes/`mailbox`/messages/`id`/tags/`tag`
-
-Unsets the given tag for the message.
-
 ### GET /mailboxes/`mailbox`/messages/`id`
 
 Fetches the message from storage. The result will be `message/rfc822`
 data for the raw mail message.
+
+### GET /mailboxes/`mailbox`/messages/`id`/parts/`part`
+
+Fetches `part` as identified in the bodystructure dictionary returned by /meta/,
+given in the format described by IMAP RFC 3501.
 
 ### HEAD /mailboxes/`mailbox`/messages/`id`
 
@@ -153,6 +149,94 @@ Unsets the given flag for the message.
 
 ### GET /mailboxes/`mailbox`/messages/`id`/meta/
 
-Gets all the meta information associated with the message. Currently, this will
-return a JSON dictionary with two keys, `From` and `Subject`.
+Gets all the meta information associated with the message. This is a JSON dictionary containing the following keys:
+```
+to
+from
+subject
+cc
+bcc
+date
+folder
+stored
+modified
+size
+flags
+bodystructure
+imap_uid
+pop3_uidl
+```
 
+The `bodystructure` field is a json list of dictionaries containing body part information.
+```
+{ 
+  "type": "multipart",
+  "subtype": "mixed",
+  "parameters" : {
+    "boundary": "_004_1433449118796123"
+  },
+  "language": "en-US",
+  "part-url": "http://httpmail.matthewvia.info:5000/mailboxes/1234/messages/abcd/parts/1",
+  "parts": [
+    {
+      "type": "text",
+      "subtype": "plain",
+      "parameters": {
+        "charset": "iso-8859-1"
+      },
+      "id": "1234",
+      "encoding": "quoted-printable",
+      "size": 387,
+      "part-url": "http://httpmail.matthewvia.info:5000/mailboxes/1234/messages/abcd/parts/1.1",
+      "lines": 13
+    }, 
+    {
+      "type": "application",
+      "octet-stream",
+      "parameters": {
+        "name": "test.txt"
+      },
+      "description": "test.txt",
+      "encoding": "base64",
+      "size": 505498,
+      "md5": "36df9540a5ef4996a9737657e4a8929c",
+      "part-url": "http://httpmail.matthewvia.info:5000/mailboxes/1234/messages/abcd/parts/1.2",
+      "disposition": {
+        "type": "attachment",
+        "parameters": {
+          "filename": "test.txt",
+          "size": "369402",
+          "creation-date": "Thu, 04 Jun 2015 20:18:17 GMT"
+        }
+      }
+    }
+  ]
+}
+```
+      
+### PATCH /mailboxes/`mailbox`/messages/`id`/meta
+
+Allows changing of message metadata.  Pass a body containing a json dictionary
+containing any of the following keys:
+```
+folder
+flags
+imap_uid
+pop3_uidl
+```
+
+### GET /mailboxes/`mailbox`/messages/`id`/annotations/
+
+Returns a JSON list of existing annotations
+
+### PUT /mailboxes/`mailbox`/messages/`id`/annotations/`annotation`
+
+Pass a payload to store as an annotation
+
+### DELETE /mailboxes/`mailbox`/messages/`id`/annotations/`annotation`
+
+Deletes a given annotation
+
+### GET /mailboxes/`mailbox`/messages/`id`/annotations/`annotation`
+
+Fetches an annotation

@@ -7,11 +7,11 @@ import uuid
 from datetime import datetime
 from dateutil.parser import parse
 
-from hyperdex.client import Client, Contains, Equals, LessThan, GreaterThan, Regex
+from hyperdex.client import Client, Contains, Equals, LessThan, GreaterThan, Regex, Document
 
 name='HyperdexIndex'
 
-class TagNotFound(Exception):
+class FolderNotFound(Exception):
     pass
 
 class MessageNotFound(Exception):
@@ -20,15 +20,19 @@ class MessageNotFound(Exception):
 class HyperdexIndex():
  
     """
-    tag list format:
-    "user": { "tags": set of tags,
-              "created": date int,
-              "modified": date int
-              "size": int
+    folder list format:
+    "user": { "folders": set of folders,
+              "created": date (timestamp),
+              "modified": date (timestamp),
+              "size": int,
+              "folder_count": map (folder name -> message count),
+              "folder_unread_count": map (folder name -> unread count),
+              "folder_created": map (folder name -> created timestamp),
+              "folder_modified": map (folder name -> modified timestamp)
             }
     
     message format:
-    "uuid": { "tags": set[])
+    "uuid": { "folder": string)
               "flags": set([])
               "to": "to header",
               "from": "from header",
@@ -37,30 +41,36 @@ class HyperdexIndex():
               "subject": subject header",
               "size": size int,
               "date": "date header",
-              "dateint": date int
-              "storeddate": unix timestamp int,
+              "intdate": date timestamp,
+              "stored": stored timestamp,
+              "last_modified": timestamp,
+              "structure": json array of dicts representing body structure
+              "imap_uid": imap uid int,
+              "pop3_uidl": "pop3 uidl string",
+              "annotations": arbitrary metadata
             }
     The index internally stores this as is, with the addition of a 
-    'date_int' field containing unixtimestamp version of the Date header
-    for fast indexing, as well as json encoded versions of the tags
-    and space delimited version of the flags.
+    'intdate' field containing timestamp version of the Date header
+    for fast indexing.
+
     
     """
 
-    def __init__(self, config, user, readonly):
+    def __init__(self, config):
         self.client = Client(config['host'], int(config['port']))
           
-        self.user = str(user)
-        self.tags = config['tag_space']
+        self.folders = config['folder_space']
         self.messages = config['message_space']
 
-    def _init_user(self):
-        if not self.client.get(self.tags, self.user):
-            self.client.put(self.tags, self.user, {'tags': set([]), 'created': 0})
+    def _init_user(self, user):
+        if not self.client.get(self.folders, user)
+            self.client.put(self.folders, user, {'folders': set([]), 
+                                                 'created': datetime.utcnow(),
+                                                 'modified': datetime.utcnow()})
 
     def _parse_date(self, date):
         if date is None:
-            dateint = 0
+            dateint = datetime.utcnow()
         else:
             dtime = utils.parsedate_tz(date)
             if dtime is None:
@@ -69,23 +79,26 @@ class HyperdexIndex():
                 except:
                     dtime = datetime.now()
                 dtime = dtime.timetuple()+ (0,)
-            dateint = int(utils.mktime_tz(dtime))
+            dateint = dtime
         return dateint
 
-    def _update_size(self, delta):
-        self.client.atomic_add(self.tags, self.user, {'size': delta})
+    def _update_size(self, user, delta):
+        self.client.atomic_add(self.folders, user, {'size': delta})
 
-    def _update_modified(self):
-        self.client.put(self.tags, self.user, {'modified': int(time.time())})
+    def _update_modified(self, user):
+        self.client.put(self.folders, user, {'modified': datetime.utcnow()})
 
-    def _update_tag_count(self, tag, delta):
-        self.client.map_atomic_add(self.tags, self.user, {'tag_count': {str(tag): delta}})
+    def _update_folder_count(self, user, folder, delta):
+        self.client.map_atomic_add(self.folders, user, {'folder_count': {str(folder): delta}})
 
-    def _update_tag_unread_count(self, tag, delta):
-        self.client.map_atomic_add(self.tags, self.user, {'tag_unread_count': {str(tag): delta}})
+    def _update_folder_unread_count(self, user, folder, delta):
+        self.client.map_atomic_add(self.folders, user, {'folder_unread_count': {str(folder): delta}})
 
-    def _update_tag_modified(self, tag):
-        self.client.map_add(self.tags, self.user, {'tag_modified': {str(tag): int(time.time())}})
+    def _update_message_modified(self, user, uuid):
+        self.client.put(self.messages, uuid, {'last_modified': datetime.utcnow()})
+
+    def _update_folder_modified(self, user, folder):
+        self.client.map_add(self.folders, user, {'folder_modified': {str(folder): datetime.utcnow()}})
 
     def _number_compare(self, verb, number):
         if verb is filter.FilterVerb.Contains:
@@ -95,27 +108,29 @@ class HyperdexIndex():
         if verb is filter.FilterVerb.Greater:
             return GreaterThan(number)
 
-    def list_messages(self, filterlist=[], sort=None, limit=None):
-        filters = {'user': self.user}
+    def list_messages(self, user, filterlist=[], sort=None, limit=None):
+        filters = {'user': user}
         
         for filter, verb, value in filterlist:
             if filter in ['to', 'from', 'cc',
                     'bcc', 'subject']:
                 filters[filter] = Regex(str(value))
-            elif filter in ['stored', 'size']:
+            elif filter in ['imap_uid', 'size']:
                 filters[filter] = self._number_compare(verb, int(value))
-            elif filter in ['date']:
-                d = time.mktime(utils.parsedate(value))
-                filters['dateint'] = self._number_compare(verb, int(d))
-            elif filter in ['tag']:
-                filters['tags'] = Contains(str(value))
+            elif filter in ['date', 'stored', 'modified']:
+                d = utils.parsedate(value)
+                if filter == 'date':
+                    filter = 'intdate'
+                filters[filter] = self._number_compare(verb, d)
+            elif filter in ['folder', 'pop3_uidl']:
+                filters[filter] = Equals(str(value))
             elif filter in ['flag']:
                 filters['flags'] = Contains(str(value))
                 
         if sort is None or sort[0] is None:
             sortfield = 'uuid'
         elif sort[0] == 'date':
-            sortfield = 'dateint'
+            sortfield = 'intdate'
         else:
             sortfield = str(sort[0])
         
@@ -127,123 +142,115 @@ class HyperdexIndex():
         if limit is None:
             limit = (5000000, 0)
  
-        print filters
-        print sort
-        print sortdir
-        print limit
-        res = [msg['uuid'] for msg in self.client.sorted_search(self.messages, filters, sortfield, limit[0] + limit[1], sortdir)]
+        res = self.client.sorted_search(self.messages, filters, sortfield, limit[0] + limit[1], sortdir)
         return res[0:len(res) - limit[1]][::-1]
 
-    def list_tags(self):
-        self._init_user()
-        tags = self.client.get(self.tags, self.user)['tags']
-        return list(tags) or []
+    def list_folders(self, user):
+        self._init_user(user)
+        folder = self.client.get(self.folders, user)['folders']
+        return list(folders) or []
 
-    def get_tag(self, tag):
-        if not tag in self.list_tags():
+    def get_folder(self, user, folder):
+        if not folder in self.list_folders(user):
             return None
-        tagdata = self.client.get(self.tags, self.user)
-        r = {"count": tagdata['tag_count'][tag],
-             "unread": tagdata['tag_unread_count'][tag],
-             "created": tagdata['tag_created'][tag],
-             "last-modified": tagdata['tag_modified'][tag]}
+        folderdata = self.client.get(self.folders, user)
+        r = {"count": folderdata['folder_count'][folder],
+             "unread": folderdata['folder_unread_count'][folder],
+             "created": folderdata['folder_created'][folder],
+             "last-modified": folderdata['folder_modified'][folder]}
         return r
 
-    def put_tag(self, tag):
-        if not self.client.get(self.tags, self.user):
-           self._init_user()
-        self.client.set_add(self.tags, self.user, {'tags': str(tag)})
-        self.client.map_add(self.tags, self.user, {'tag_unread_count': {str(tag): 0}})
-        self.client.map_add(self.tags, self.user, {'tag_count': {str(tag): 0}})
-        self.client.map_add(self.tags, self.user, {'tag_created': {str(tag): int(time.time())}})
-        self.client.map_add(self.tags, self.user, {'tag_modified': {str(tag): int(time.time())}})
+    def put_folder(self, user, folder):
+        if not self.client.get(self.folders, user):
+           self._init_user(user)
+        if folder in self.list_folders(user):
+            return
+        self.client.set_add(self.folders, user, {'folders': str(folder)})
+        self.client.map_add(self.folders, user, {'folder_unread_count': {str(folder): 0}})
+        self.client.map_add(self.folders, user, {'folder_count': {str(folder): 0}})
+        self.client.map_add(self.folders, user, {'folder_created': {str(folder): datetime.utcnow()}})
+        self.client.map_add(self.folders, user, {'folder_modified': {str(folder): datetime.utcnow()}})
 
-    def del_tag(self, tag):
+    def del_folder(self, user, folder):
         pass
 
-    def get_message(self, uuid):
+    def get_message(self, user, uuid):
         msg = self.client.get(self.messages, uuid)
-        del msg['dateint']
-        del msg['user']
-        msg['tags'] = list(msg['tags'])
+        del msg['intdate']
         msg['flags'] = list(msg['flags'])
         return msg
 
-    def put_message_tags(self, uuid, newtags):
+    def put_message_folder(self, user, uuid, folder):
         uuid = str(uuid)
-        totaltags = self.client.get(self.tags, self.user)['tags']
-        oldtags = self.client.get(self.messages, uuid)['tags']
+        folders = self.client.get(self.folders, self.user)['folders']
+        oldfolder = self.client.get(self.messages, uuid)['folder']
         flags = self.client.get(self.messages, uuid)['flags']
-        if not set(newtags).issubset(totaltags):
-            raise TagNotFound()
-        for old in oldtags:
-            if old not in newtags:
-                self._update_tag_modified(old)
-                self._update_tag_count(old, -1)
-                if "\\Seen" not in flags:
-                    self._update_tag_unread_count(old, -1)
-        for new in newtags:
-            if new not in oldtags:
-                self._update_tag_count(new, 1)
-                self._update_tag_modified(new)
-                if "\\Seen" not in flags:
-                    self._update_tag_unread_count(new, 1)
-        self.client.put(self.messages, str(uuid), {'tags': set(newtags)})
+        if folder not in folders:
+            raise FolderNotFound()
+        self._update_folder_modified(user, oldfolder)
+        self._update_folder_count(user, oldfolder, -1)
+        if "\\Seen" not in flags:
+            self._update_folder_unread_count(user, oldfolder, -1)
+        self._update_folder_count(user, folder, 1)
+        self._update_folder_modified(user, folder)
+        if "\\Seen" not in flags:
+            self._update_folder_unread_count(user, folder, 1)
+        self.client.put(self.messages, str(uuid), {'folder': folder)
+        self._update_message_modified(user, uuid)
 
-    def put_message_flags(self, uuid, flags):
+    def put_message_flags(self, user, uuid, flags):
         uuid = str(uuid)
         oldflags = self.client.get(self.messages, uuid)['flags']
-        tags = self.client.get(self.tags, self.user)['tags']
+        folder = self.client.get(self.folders, user)['folder']
         self.client.put(self.messages, str(uuid), {'flags': set([str(x) for x in flags])})
         if "\\Seen" in oldflags and "\\Seen" not in flags:
-            for tag in tags:
-                self._update_tag_unread_count(tag, 1)
+            self._update_folder_unread_count(user, folder, 1)
         if "\\Seen" not in oldflags and "\\Seen" in flags:
-            for tag in tags:
-                self._update_tag_unread_count(tag, -1)
-        for tag in tags:
-            self._update_tag_modified(tag)        
+            self._update_folder_unread_count(user, folder, -1)
+        self._update_folder_modified(user, folder)        
+        self._update_message_modified(user, uuid)
 
     def _encode_strings(self, msg):
-        for field in ['to', 'from', 'cc', 'bcc', 'subject', 'date']:
+        for field in ['to', 'from', 'cc', 'bcc', 'subject', 'date', 'folder', 
+                      'pop3_uidl']:
             msg[field] = msg[field].decode('iso-8859-1').encode('utf-8')
         msg['flags'] = [x.decode('iso-8859-1').encode('utf-8') for x in msg['flags']]
-        msg['tags'] = [x.decode('iso-8859-1').encode('utf-8') for x in msg['tags']]
         return msg
     
-    def put_message(self, uuid, msg):
+    def put_message(self, user, uuid, msg):
         self._init_user()
         msg = self._encode_strings(msg)
-        msg['tags'] = set(msg['tags'])
         msg['flags'] = set(msg['flags'])
-        msg['dateint'] = self._parse_date(msg['date'])
-        msg['user'] = self.user
+        msg['intdate'] = self._parse_date(msg['date'])
+        msg['user'] = user
+        msg['bodystructure'] = Document(msg['bodystructure'])
+        msg['annotations'] = Document(msg['annotations'])
+        folder = msg['folder']
         self.client.put(self.messages, uuid, msg)
-        self._update_size(msg['size'])
-        for tag in msg['tags']:
-            self._update_tag_modified(tag)        
-            self._update_tag_count(tag, 1)
-            if '\\Seen' not in msg['flags']:
-                self._update_tag_unread_count(tag, 1)
-        self._update_modified()
+        self._update_size(user, msg['size'])
+        self._update_folder_modified(user, folder)        
+        self._update_folder_count(user, folder, 1)
+        if '\\Seen' not in msg['flags']:
+            self._update_folder_unread_count(user, folder, 1)
+        self._update_modified(user)
+        self._update_message_modified(user, uuid)
          
 
-    def del_message(self, uuid):
-        msg = self.get_message(uuid)
+    def del_message(self, user, uuid):
+        msg = self.get_message(user, uuid)
         self.client.delete(self.messages, uuid)
-        self._update_size(-msg['size'])
-        for tag in msg['tags']:
-            self._update_tag_modified(tag)        
-            self._update_tag_count(tag, -1)
-            if '\\Seen' in msg['flags']:
-                self._update_tag_unread_count(tag, -1)
-        self._update_modified()
+        self._update_size(user, -msg['size'])
+        self._update_folder_modified(user, msg['folder'])        
+        self._update_folder(user, msg['folder'], -1)
+        if '\\Seen' in msg['flags']:
+            self._update_folder_unread_count(user, msg['folder'], -1)
+        self._update_modified(user)
 
-    def get_user(self):
-        self._init_user()
-        row = self.client.get(self.tags, self.user)
-        count = sum(row['tag_count'].values())
-        u = {"user": self.user,
+    def get_user(self, user):
+        self._init_user(user)
+        row = self.client.get(self.folders, user)
+        count = sum(row['row_count'].values())
+        u = {"user": user,
              "created": row['created'],
              "modified": row['modified'],
              "size": row['size'],

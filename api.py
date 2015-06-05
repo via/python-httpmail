@@ -11,11 +11,9 @@ from flask.ext.runner import Runner
 
 app = Flask(__name__)
 runner = Runner(app)
-swiftuser = 'jwitrick'
-swiftkey = ''
-swifthost = 'https://auth.api.rackspacecloud.com/v1.0'
-endpoint = 'http://s3api.matthewvia.info:5000'
+
 siteconfig = config.SiteConfig('httpmail.conf')
+endpoint = siteconfig.api()['endpoint']
 
 def _mailbox_url(mailbox):
     return "{0}/mailboxes/{1}".format(endpoint, mailbox)
@@ -23,8 +21,8 @@ def _mailbox_url(mailbox):
 def _message_url(mailbox, msg):
     return "{0}/mailboxes/{1}/messages/{2}".format(endpoint, mailbox, msg)
 
-def _tag_url(mailbox, tag):
-    return "{0}/mailboxes/{1}/{2}".format(endpoint, mailbox, tag)
+def _folder_url(mailbox, folder):
+    return "{0}/mailboxes/{1}/{2}".format(endpoint, mailbox, folder)
 
 def _msg_to_dict(rawmsg):
     parser = FeedParser()
@@ -46,8 +44,8 @@ def _msg_to_dict(rawmsg):
 
 @app.route('/mailboxes/<mailbox>')
 def mailbox_get(mailbox):
-    i = siteconfig.index(mailbox, readonly=True)
-    box = i.get_user()
+    i = siteconfig.index()
+    box = i.get_user(mailbox)
     res = { 'id': mailbox,
             'date-created': box['created'],
             'date-modified': box['modified'],
@@ -57,50 +55,50 @@ def mailbox_get(mailbox):
     return (json.dumps(res), 200, {
                'Content-Type': 'application/json' })
     
-def _format_tag(i, mailbox, tag):
-    t = { 'tag': tag,
-	  'message-count': int(i.get_tag(tag)['count']),
-	  'unread-count': int(i.get_tag(tag)['unread']),
-	  'created': i.get_tag(tag)['created'],
-	  'last-modified': i.get_tag(tag)['last-modified'],
+def _format_folder(i, mailbox, folder):
+    f = { 'folder': folder,
+	  'message-count': int(i.get_folder(mailbox, folder)['count']),
+	  'unread-count': int(i.get_folder(mailbox, folder)['unread']),
+	  'created': i.get_folder(mailbox, folder)['created'],
+	  'last-modified': i.get_folder(mailbox, folder)['last-modified'],
 	  'mailbox-url': _mailbox_url(mailbox),
-	  'url': _tag_url(mailbox, tag)
+	  'url': _folder_url(mailbox, folder)
     }
-    return t
+    return f
 
-@app.route('/mailboxes/<mailbox>/tags/')
-def tags_get(mailbox):
-    i = siteconfig.index(mailbox, readonly=True)
-    res = [ _format_tag(i, mailbox, tag) for tag in i.list_tags() ]
+@app.route('/mailboxes/<mailbox>/folders/')
+def folders_get(mailbox):
+    i = siteconfig.index()
+    res = [ _format_folder(i, mailbox, folder) for folder in i.list_folders(mailbox) ]
     return (json.dumps(res), 200,
                {'Content-Type': 'application/json'})
 
-@app.route('/mailboxes/<mailbox>/tags/<tag>')
-def tag_get(mailbox, tag):
-    i = siteconfig.index(mailbox, readonly=True)
+@app.route('/mailboxes/<mailbox>/folders/<folder>')
+def folder_get(mailbox, folder):
+    i = siteconfig.index()
     if request.method == 'HEAD':
-        tag = i.get_tag(tag)
+        folder = i.get_folder(mailbox, folder)
         return ("", 200, {
-            'X-Total-Count': tag['count'],
-            'X-Unread-Count': tag['unread']
+            'X-Total-Count': folder['count'],
+            'X-Unread-Count': folder['unread']
         })
     else:
-        return (json.dumps(_format_tag(i, mailbox, tag)), 200, 
+        return (json.dumps(_format_folder(i, mailbox, folder)), 200, 
                    {'Content-Type': 'application/json'})
 
 
-@app.route('/mailboxes/<mailbox>/tags/<tag>', methods=['PUT'])
-def tag_put(mailbox, tag):
-    i = siteconfig.index(mailbox)
-    if tag in i.list_tags():
+@app.route('/mailboxes/<mailbox>/folders/<folder>', methods=['PUT'])
+def folder_put(mailbox, folder):
+    i = siteconfig.index()
+    if folder in i.list_folders(mailbox):
         return ('Tag already exists', 409)
-    i.put_tag(tag)
-    return (json.dumps(_format_tag(i, mailbox, tag)), 201,
+    i.put_folder(mailbox, folder)
+    return (json.dumps(_format_folder(i, mailbox, folder)), 201,
                {'Content-Type': 'application/json'})
 
-@app.route('/mailboxes/<mailbox>/tags/<tag>', methods=['DELETE'])
-def tag_delete(mailbox, tag):
-    i = siteconfig.index(mailbox)
+@app.route('/mailboxes/<mailbox>/folders/<folder>', methods=['DELETE'])
+def folder_delete(mailbox, folder):
+    i = siteconfig.index()
     return ("Not implemented", 501)
 
 def _msg_from_json(js):
@@ -117,31 +115,37 @@ def _msg_from_json(js):
 
 def _msg_to_response(i, s, mailbox, msgid, get_body=False):
     res = {}
-    msgi = i.get_message(msgid)
+    msgi = i.get_message(mailbox, msgid)
+
+    structure = msgi['bodystructure']
+    #TODO: remove backend pointers from structure
     if get_body:
         pass
     res.update( {
         "id": msgid,
-        "tags": msgi['tags'],
+        "folder": msgi['folder'],
         "flags": msgi['flags'],
         "url": _message_url(mailbox, msgid),
         "url-mailbox": _mailbox_url(mailbox),
-        "url-tags": "{0}/tags".format(_message_url(mailbox, msgid)),
         "headers": {
-          "subject": msgi['subject'],
-          "from": msgi['from'],
-          "to": msgi['to'].split(','),
-          "cc": msgi['cc'].split(','),
-          "bcc": msgi['bcc'].split(','),
-          "date": msgi['date'],
-          "stored": msgi['stored'],
-          "size": msgi['size'] 
+            "subject": msgi['subject'],
+            "from": msgi['from'],
+            "to": msgi['to'].split(','),
+            "cc": msgi['cc'].split(','),
+            "bcc": msgi['bcc'].split(','),
+            "date": msgi['date'] },
+        "stored": msgi['stored'],
+        "size": msgi['size'] ,
+        "modified": msgi['modified'],
+        "imap_uid": msgi['imap_uid'],
+        "pop3_uidl": msgi['pop3_uidl'],
+        "bodystructure": structure
         } })
         
 @app.route('/mailboxes/<mailbox>/messages/', methods=['POST'])
 def put_message(mailbox):
-    i = siteconfig.index(mailbox)
-    s = siteconfig.storage(mailbox)
+    i = siteconfig.index()
+    s = siteconfig.storage()
     u = uuid.uuid4()
     if request.headers['content-type'] == 'application/json':
         msg = _msg_from_json(request.data)
@@ -149,13 +153,13 @@ def put_message(mailbox):
         msg = request.data
     else:
         return ("Unknown Content-Type", 400)
-    attrs = { 'tags': [],
+    attrs = { 'folder': "",
               'flags': [],
-              'stored': 999 }
+              'stored': datetime.utcnow() }
     s.put_message(u, msg, attrs)
     indexed_message = _msg_to_dict(msg) 
     indexed_message.update(attrs)
-    i.put_message(u, indexed_message)
+    i.put_message(mailbox, u, indexed_message)
     res = _msg_to_response(i, s, mailbox, u)
     return (json.dumps(res), 200, 
         {"Content-Type": "application/json"} )

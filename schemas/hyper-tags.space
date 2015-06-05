@@ -1,14 +1,14 @@
-space tags
+space folders
 key user
 attributes
-  set(string) tags,
-  int created,
-  int modified,
+  set(string) folders,
+  timestamp(second) created,
+  timestamp(second) modified,
   int size,
-  map(string, int) tag_count,
-  map(string, int) tag_unread_count,
-  map(string, int) tag_created,
-  map(string, int) tag_modified
+  map(string, int) folder_count,
+  map(string, int) folder_unread_count,
+  map(string, timestamp(second)) folder_created,
+  map(string, timestamp(second)) folder_modified
 create 8 partitions
 tolerate 1 failures
 
